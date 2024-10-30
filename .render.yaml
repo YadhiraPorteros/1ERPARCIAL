@@ -1,0 +1,14 @@
+services:
+  - type: web  # Indica que este servicio es de tipo web
+    name: mi-api-magneto  # Nombre del servicio
+    runtime: docker  # Define el runtime para el servicio
+    plan: free  # Plan a utilizar (puedes cambiar a "starter" si necesitas más recursos)
+    dockerfilePath: Dockerfile  # Ruta al Dockerfile, debe estar en la raíz del proyecto
+    envVars:  # Variables de entorno para tu aplicación
+      - key: PORT  # Nombre de la variable de entorno
+        value: 2003  # Valor de la variable, el puerto que tu aplicación usará
+    autoDeploy: true  # Habilita el despliegue automático en cada cambio de Git
+
+
+
+
