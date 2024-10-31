@@ -20,7 +20,7 @@ import lombok.experimental.SuperBuilder;
 public class DNA extends Base {
 
     @Column(name = "dna", columnDefinition = "TEXT")
-    private String dna;  // Asegúrate de que el campo se llame "dna"
+    private String dna;
 
     private boolean isMutant;
 }

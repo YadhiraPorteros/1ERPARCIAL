@@ -4,58 +4,67 @@ import com.PARCIAL.dtos.StatsResponse;
 import com.PARCIAL.entidades.DNA;
 import com.PARCIAL.repositorios.DNARepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.stereotype.Service;
 
+import java.util.concurrent.CompletableFuture;
 
 @Service
+@EnableAsync
 public class DNAService {
 
     @Autowired
     private DNARepository dnaRepository;
+
+    // Caché para almacenar resultados de secuencias de ADN ya procesadas
+    private ConcurrentHashMap<String, Boolean> cache = new ConcurrentHashMap<>();
 
     @Transactional
     public void save(DNA dna) {
         dnaRepository.save(dna);
     }
 
-
     @Transactional
     public boolean isMutant( String[] dna) {
         String dnaString = String.join(",", dna); // Convertir el array de Strings a un solo String
 
+        // Verificar si la secuencia ya está en el caché
+        if (cache.containsKey(dnaString)) {
+            return cache.get(dnaString); // Devuelve el resultado almacenado
+        }
+
         // Verificar si ya existe en la base de datos
         if (dnaRepository.findByDna(dnaString).isPresent()) {
-            return dnaRepository.findByDna(dnaString).get().isMutant();
+            boolean isMutant = dnaRepository.findByDna(dnaString).get().isMutant();
+            cache.put(dnaString, isMutant); // Actualiza el caché
+            return isMutant;
         }
 
         int sequencesFound = 0;
         int n = dna.length;
-
         boolean[][] counted = new boolean[n][n]; // Matriz para marcar posiciones contadas
 
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
-                // Verifica si hay secuencias en horizontal, vertical y diagonal
-                if (!counted[i][j] && hasHorizontalSequence(dna, i, j, counted)) {
-                    sequencesFound++;
-                }
-                if (!counted[i][j] && hasVerticalSequence(dna, i, j, counted)) {
-                    sequencesFound++;
-                }
-                if (!counted[i][j] && hasDiagonalSequence(dna, i, j, counted)) {
-                    sequencesFound++;
-                }
-
-                // Si ya se encontraron más de una secuencia, guardamos y retornamos
-                if (sequencesFound > 1) {
-                    save(new DNA(dnaString, true)); // Guardar como mutante
+                if (sequencesFound > 1) {  // Si encontramos más de una secuencia, termina la búsqueda
+                    cache.put(dnaString, true);  // Guarda en el caché como mutante
+                    save(new DNA(dnaString, true)); // Guarda en la base de datos
                     return true;
                 }
+
+                // Verificar secuencias en horizontal, vertical y diagonal
+                if (!counted[i][j] && hasHorizontalSequence(dna, i, j, counted)) sequencesFound++;
+                if (!counted[i][j] && hasVerticalSequence(dna, i, j, counted)) sequencesFound++;
+                if (!counted[i][j] && hasDiagonalSequence(dna, i, j, counted)) sequencesFound++;
             }
         }
 
-        // Si no es mutante, guardamos como no mutante
+        // Si no es mutante, guarda en la base de datos y en el caché
+        cache.put(dnaString, false);
         save(new DNA(dnaString, false));
         return false;
     }
@@ -125,18 +134,23 @@ public class DNAService {
         return found;
     }
 
-
+    @Cacheable("statsCache")
     @Transactional(readOnly = true)
     public StatsResponse getStats() {
         long countMutantDna = dnaRepository.countByIsMutant(true);
         long countHumanDna = dnaRepository.countByIsMutant(false);
-
         double ratio = countHumanDna > 0 ? (double) countMutantDna / countHumanDna : 0;
 
         return new StatsResponse(countMutantDna, countHumanDna, ratio);
     }
 
+    @Async
+    public CompletableFuture<Boolean> checkIfMutantAsync(String[] dna) {
+        boolean isMutant = isMutant(dna);
+        return CompletableFuture.completedFuture(isMutant);
+    }
 }
+
 
 
 
